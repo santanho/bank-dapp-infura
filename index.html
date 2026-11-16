@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bank DApp (Infura + MetaMask)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.2/ethers.umd.min.js"></script>
+    <style>
+        body { font-family: sans-serif; max-width: 500px; margin: 40px auto; padding: 20px; background: #f4f4f9; }
+        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        button { background: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; width: 100%; font-size: 16px; margin-top: 10px; }
+        button:hover { background: #0056b3; }
+        input { width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 5px; }
+        .info { background: #e9ecef; padding: 10px; border-radius: 5px; margin-bottom: 15px; font-size: 14px; }
+        .badge { display: inline-block; background: #28a745; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>🏦 ระบบธนาคาร (Bank DApp)</h2>
+        <span class="badge">Connected via Infura RPC</span>
+        <div class="info" style="margin-top: 10px;">
+            <strong>รหัสนักศึกษา:</strong> 66066639 <br>
+            <strong>ชื่อ-สกุล:</strong> นายพีระพล คูณมา
+        </div>
+
+        <button onclick="connectWallet()">1. เชื่อมต่อ MetaMask</button>
+        <p id="walletAddress" style="font-size: 13px; color: green; word-break: break-all;">สถานะ: ยังไม่ได้เชื่อมต่อ</p>
+    </div>
+
+    <div class="card">
+        <h3>ตรวจสอบยอดเงิน (CheckBlance)</h3>
+        <button onclick="checkBalance()">เช็กยอดเงินคงเหลือ (ผ่าน Infura)</button>
+        <p id="balanceDisplay" style="font-weight: bold; font-size: 18px; margin-top: 10px;">ยอดเงิน: - Wei</p>
+    </div>
+
+    <div class="card">
+        <h3>ฝากเงิน (Deposit)</h3>
+        <label>จำนวนเงิน (หน่วย Wei):</label>
+        <input type="number" id="depositAmount" placeholder="เช่น 100">
+        <button onclick="depositMoney()">ฝากเงินเข้าธนาคาร</button>
+    </div>
+
+    <div class="card">
+        <h3>ถอนเงิน (Withdraw)</h3>
+        <label>จำนวนเงินที่ต้องการถอน (หน่วย Wei):</label>
+        <input type="number" id="withdrawAmount" placeholder="เช่น 50">
+        <button onclick="withdrawMoney()" style="background: #dc3545;">ถอนเงิน</button>
+    </div>
+
+    <script>
+        const infuraUrl = "https://sepolia.infura.io/v3/a4a490bac71e465dba2614c071102a8c";
+
+        const contractAddress = "0x0aC8542029feEd61314D10adDBebF6536c6D5A9e";
+
+        const contractABI = [
+            "function deposit() public payable",
+            "function withdraw(uint amount) public",
+            "function checkBlance() public view returns (uint balance)"
+        ];
+
+        // สร้าง Provider ผ่าน Infura สำหรับอ่านข้อมูลจาก Blockchain
+        const infuraProvider = new ethers.JsonRpcProvider(infuraUrl);
+        const readContract = new ethers.Contract(contractAddress, contractABI, infuraProvider);
+
+        let browserProvider, signer, writeContract, userAddress;
+
+        // เชื่อมต่อ MetaMask เพื่อใช้เซ็นธุรกรรม
+        async function connectWallet() {
+            if (window.ethereum) {
+                try {
+                    browserProvider = new ethers.BrowserProvider(window.ethereum);
+                    signer = await browserProvider.getSigner();
+                    userAddress = await signer.getAddress();
+                    document.getElementById("walletAddress").innerText = "เชื่อมต่อแล้ว: " + userAddress;
+                    
+                    // สร้าง Contract สำหรับเขียนข้อมูลผ่าน Signer ของ MetaMask
+                    writeContract = new ethers.Contract(contractAddress, contractABI, signer);
+                } catch (err) {
+                    alert("เชื่อมต่อไม่สำเร็จ: " + err.message);
+                }
+            } else {
+                alert("กรุณาติดตั้ง MetaMask ก่อนใช้งาน!");
+            }
+        }
+
+        // เช็กยอดเงินโดยดึงข้อมูลผ่าน Infura Node
+        async function checkBalance() {
+            if (!userAddress) return alert("กรุณากดเชื่อมต่อ MetaMask เพื่อระบุ Address ของคุณก่อน!");
+            try {
+                // ใช้ readContract (Infura) และระบุ { from: userAddress } เพื่อให้รู้ว่าเช็กยอดของใคร
+                const balance = await readContract.checkBlance({ from: userAddress });
+                document.getElementById("balanceDisplay").innerText = `ยอดเงิน: ${balance.toString()} Wei`;
+            } catch (err) {
+                alert("เกิดข้อผิดพลาดในการดึงข้อมูลผ่าน Infura: " + err.message);
+            }
+        }
+
+        // ฝากเงิน (ใช้ MetaMask เซ็นธุรกรรม)
+        async function depositMoney() {
+            if (!writeContract) return alert("กรุณากดเชื่อมต่อ MetaMask ก่อน!");
+            const amount = document.getElementById("depositAmount").value;
+            if (!amount || amount <= 0) return alert("กรุณากรอกจำนวนเงินให้ถูกต้อง");
+
+            try {
+                const tx = await writeContract.deposit({ value: amount });
+                alert("กำลังส่งธุรกรรม กรุณารอสักครู่...");
+                await tx.wait();
+                alert("ฝากเงินสำเร็จ!");
+                checkBalance();
+            } catch (err) {
+                alert("เกิดข้อผิดพลาด: " + err.message);
+            }
+        }
+
+        // ถอนเงิน (ใช้ MetaMask เซ็นธุรกรรม)
+        async function withdrawMoney() {
+            if (!writeContract) return alert("กรุณากดเชื่อมต่อ MetaMask ก่อน!");
+            const amount = document.getElementById("withdrawAmount").value;
+            if (!amount || amount <= 0) return alert("กรุณากรอกจำนวนเงินให้ถูกต้อง");
+
+            try {
+                const tx = await writeContract.withdraw(amount);
+                alert("กำลังส่งธุรกรรม กรุณารอสักครู่...");
+                await tx.wait();
+                alert("ถอนเงินสำเร็จ!");
+                checkBalance();
+            } catch (err) {
+                alert("เกิดข้อผิดพลาด: " + (err.reason || err.message));
+            }
+        }
+    </script>
+</body>
+</html>
